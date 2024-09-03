@@ -37,6 +37,27 @@ def convert_to_bool(in_bool):
     # Convert the input to string and lower case, then check against true values
     return str(in_bool).lower() in ('true', 'on', '1', 'y', 'yes')
 
+def format_time(seconds):
+    # Convert seconds to years, months, weeks, days, hours, minutes, seconds
+    units = [
+        ('year', 60 * 60 * 24 * 365),
+        ('month', 60 * 60 * 24 * 30),
+        ('week', 60 * 60 * 24 * 7),
+        ('day', 60 * 60 * 24),
+        ('hour', 60 * 60),
+        ('minute', 60),
+        ('second', 1),
+    ]
+    
+    result = []
+    for name, count in units:
+        value = seconds // count
+        if value:
+            seconds -= value * count
+            result.append(f"{int(value)} {name}{'s' if value > 1 else ''}")
+    
+    return ' '.join(result) if result else '0 seconds'
+
 # Function to read environment variables from a file and return them as a dictionary
 def get_env_variables_from_file(filename):
     env_vars = {}
@@ -131,11 +152,16 @@ last_print_time = None
 
 #start queue
 global task_queue
+global estimated_time
 task_queue = queue.Queue()
 
 def transcription_worker():
+    global estimated_time
+    
     while True:
         task = task_queue.get()
+        start_time = time.time()  # Start timing the task
+        
         try:
             if 'Bazarr-' in task['path']:
                 logging.info(f"{task['path']} is being handled by ASR.")
@@ -145,8 +171,17 @@ def transcription_worker():
             logging.error(f"Error processing task {task}: {e}")
         finally:
             task_queue.task_done()
-            logging.info(f"Task {task} completed.")
+            task_length = time.time() - start_time  # Calculate the length of the task
+            
+            # Calculate and update estimated time to completion
+            if task_queue.qsize() > 0:
+                estimated_time = task_length * task_queue.qsize()
+                formatted_time = format_time(estimated_time)
+                logging.info(f"Estimated time to queue completion: {formatted_time}.")
+            
+            logging.info(f"Task {os.path.basename(task['path'])} completed.")
             logging.info(f"There are {task_queue.qsize()} tasks left in the queue.")
+        
         # Show queue
         logging.debug(f"There are {task_queue.qsize()} tasks left in the queue.")
 
